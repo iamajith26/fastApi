@@ -1,0 +1,17 @@
+triggers:
+    step 1. create trigger function in the Query Tool :
+        CREATE OR REPLACE FUNCTION audit_company_insert()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            INSERT INTO AUDIT (EMP_ID, ENTRY_DATE)
+            VALUES (NEW.ID, NOW()::TEXT);
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+
+    step 2. create a trigger in the Query Tool:
+        CREATE TRIGGER company_audit_after_insert
+        AFTER INSERT ON COMPANY
+        FOR EACH ROW
+        EXECUTE FUNCTION audit_company_insert();
+    
