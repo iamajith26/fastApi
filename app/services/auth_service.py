@@ -9,6 +9,7 @@ from app.auth.password import hash_password, verify_password
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 import os
+from typing import Optional
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,7 +43,7 @@ class AuthService:
         # self.db.refresh(user)  # not needed since we don't return it
         return RegistrationMessage(detail="User registered successfully").dict()  
 
-    def authenticate_user(self, email: str, password: str) -> User | None:
+    def authenticate_user(self, email: str, password: str) -> Optional[User]:
         user = self.db.query(User).filter(User.email == email).first()
         if not user or not user.hashed_password or not verify_password(password, user.hashed_password):
             return None

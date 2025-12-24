@@ -82,7 +82,7 @@ def get_user_id_from_token(token: str) -> Optional[int]:
     except Exception:
         return None
 
-def verify_jwt_token(token: str, db: Session) -> User | None:
+def verify_jwt_token(token: str, db: Session) -> Optional[User]:
     if is_token_blacklisted(db, token):
         return None
     try:

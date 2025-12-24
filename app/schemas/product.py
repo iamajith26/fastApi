@@ -21,5 +21,4 @@ class ProductUpdate(BaseModel):
 class ProductOut(ProductBase):
     id: int
     class Config:
-        orm_mode = True          # Pydantic v1
         from_attributes = True   # Pydantic v2

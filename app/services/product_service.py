@@ -3,6 +3,7 @@ from fastapi import Depends, HTTPException
 from app.db.session import get_db
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate
+from typing import Optional
 
 class ProductService:
     def __init__(self, db: Session):
@@ -15,10 +16,10 @@ class ProductService:
         self.db.refresh(db_product)
         return db_product
 
-    def get_product(self, product_id: int) -> Product | None:
+    def get_product(self, product_id: int) -> Optional[Product]:
         return self.db.query(Product).filter(Product.id == product_id).first()
 
-    def update_product(self, product_id: int, product: ProductUpdate) -> Product | None:
+    def update_product(self, product_id: int, product: ProductUpdate) -> Optional[Product]:
         db_product = self.get_product(product_id)
         if db_product:
             for key, value in product.dict(exclude_unset=True).items():

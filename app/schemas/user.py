@@ -25,7 +25,6 @@ class UserInDB(UserBase):
     
 class UserOut(UserInDB):
     class Config:
-        orm_mode = True          # Pydantic v1
         from_attributes = True   # Pydantic v2
         
 class UserResponse(UserOut):
