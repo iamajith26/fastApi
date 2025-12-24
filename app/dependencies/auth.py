@@ -6,8 +6,7 @@ from app.auth.jwt_handler import verify_jwt_token
 from sqlalchemy.orm import Session
 import jwt  # Add this import
 
-EXCLUDED_PATHS = ["/", "/auth/login", "/auth/register", "/auth/refresh_token"]
-
+EXCLUDED_PATHS = ["/", "/auth/login", "/auth/register", "/auth/refresh_token", "/docs", "/openapi.json", "/redoc"]
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip authentication for excluded paths

@@ -5,7 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+app = FastAPI(
+    title="FastAPI Auth Products",
+    description="API documentation for user authentication and product management.",
+    version="1.0.0",
+    docs_url="/docs",         # Swagger UI
+    redoc_url="/redoc"        # ReDoc UI
+)
 
 origins = [
     "http://localhost:8080",
