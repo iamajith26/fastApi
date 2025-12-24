@@ -27,6 +27,7 @@ def create_product(
     product: ProductCreate,
     product_service: ProductService = Depends(get_product_service),
 ):
+    product_service.create_product(product)
     return {"message": "Product created successfully"}
 
 @router.put("/{product_id}", response_model=ProductOut)
