@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Deploy to EC2 using SSH
+      - name: Deploy FastAPI to EC2 using SSH
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -22,12 +22,17 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             cd /home/${{ secrets.EC2_USERNAME }}/app
+            
+            # Pull latest code
             git pull origin main
             
-            # Install dependencies (adjust for your stack)
-            npm install --production
+            # Activate virtual environment
+            source venv/bin/activate
             
-            # Restart application
-            pm2 restart app || pm2 start app.js --name app
+            # Install/update dependencies
+            pip install -r requirements.txt
             
-            echo "Deployment completed successfully!"
+            # Restart FastAPI via Supervisor
+            sudo supervisorctl restart fastapi-app
+            
+            echo "FastAPI deployment completed successfully!"
