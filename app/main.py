@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
 from app.api.v1.routes import auth, users
 from app.dependencies.auth import AuthenticationMiddleware
+from app.services.auth_service import get_current_user
+from app.models.user import Customer
 
 # Import all models to ensure SQLAlchemy can resolve relationships
 import app.models
@@ -36,44 +38,80 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 
 @app.api_route("/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def products_proxy(path: str, request):
-    """Proxy requests to products microservice"""
-    async with httpx.AsyncClient() as client:
-        url = f"{PRODUCTS_SERVICE_URL}/products/{path}"
-        headers = dict(request.headers)
-        
-        if request.method == "GET":
-            response = await client.get(url, headers=headers, params=request.query_params)
-        elif request.method == "POST":
-            body = await request.body()
-            response = await client.post(url, headers=headers, content=body)
-        elif request.method == "PUT":
-            body = await request.body()
-            response = await client.put(url, headers=headers, content=body)
-        elif request.method == "DELETE":
-            response = await client.delete(url, headers=headers)
-        
-        return response.json()
+async def products_proxy(
+    path: str, 
+    request: Request, 
+    current_user: Customer = Depends(get_current_user)
+):
+    """Proxy requests to products microservice - Requires authentication"""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{PRODUCTS_SERVICE_URL}/products/{path}"
+            
+            # Forward headers but add user context
+            headers = dict(request.headers)
+            headers["X-User-ID"] = str(current_user.id)
+            headers["X-User-Email"] = current_user.email
+            
+            if request.method == "GET":
+                response = await client.get(url, headers=headers, params=request.query_params)
+            elif request.method == "POST":
+                body = await request.body()
+                response = await client.post(url, headers=headers, content=body)
+            elif request.method == "PUT":
+                body = await request.body()
+                response = await client.put(url, headers=headers, content=body)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
+            
+            # Check if the response is successful
+            if response.status_code >= 400:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+                
+            return response.json()
+            
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Products service unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error communicating with products service: {str(e)}")
 
 @app.api_route("/orders/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def orders_proxy(path: str, request):
-    """Proxy requests to orders microservice"""
-    async with httpx.AsyncClient() as client:
-        url = f"{ORDERS_SERVICE_URL}/orders/{path}"
-        headers = dict(request.headers)
-        
-        if request.method == "GET":
-            response = await client.get(url, headers=headers, params=request.query_params)
-        elif request.method == "POST":
-            body = await request.body()
-            response = await client.post(url, headers=headers, content=body)
-        elif request.method == "PUT":
-            body = await request.body()
-            response = await client.put(url, headers=headers, content=body)
-        elif request.method == "DELETE":
-            response = await client.delete(url, headers=headers)
-        
-        return response.json()
+async def orders_proxy(
+    path: str, 
+    request: Request, 
+    current_user: Customer = Depends(get_current_user)
+):
+    """Proxy requests to orders microservice - Requires authentication"""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{ORDERS_SERVICE_URL}/orders/{path}"
+            
+            # Forward headers but add user context
+            headers = dict(request.headers)
+            headers["X-User-ID"] = str(current_user.id)
+            headers["X-User-Email"] = current_user.email
+            
+            if request.method == "GET":
+                response = await client.get(url, headers=headers, params=request.query_params)
+            elif request.method == "POST":
+                body = await request.body()
+                response = await client.post(url, headers=headers, content=body)
+            elif request.method == "PUT":
+                body = await request.body()
+                response = await client.put(url, headers=headers, content=body)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
+            
+            # Check if the response is successful
+            if response.status_code >= 400:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+                
+            return response.json()
+            
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Orders service unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error communicating with orders service: {str(e)}")
 
 @app.get("/")
 async def read_root():
