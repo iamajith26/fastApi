@@ -1,7 +1,8 @@
 version: '3.8'
 
 services:
-  web:
+  # API Gateway
+  api-gateway:
     build: .
     ports:
       - "8000:8000"
@@ -11,10 +12,44 @@ services:
       - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
       - SECRET_KEY=your_secret_key
       - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=1
+      - ACCESS_TOKEN_EXPIRE_MINUTES=10
+      - PRODUCTS_SERVICE_URL=http://products-service:8001
+      - ORDERS_SERVICE_URL=http://orders-service:8002
     depends_on:
       - db
+      - products-service
+      - orders-service
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
+  # Products Microservice
+  products-service:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+      - SECRET_KEY=your_secret_key
+    depends_on:
+      - db
+    command: ["uvicorn", "products_service.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  # Orders Microservice
+  orders-service:
+    build: .
+    ports:
+      - "8002:8002"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/mydatabase
+      - SECRET_KEY=your_secret_key
+    depends_on:
+      - db
+    command: ["uvicorn", "orders_service.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+
+  # Database
   db:
     image: postgres:latest
     restart: always

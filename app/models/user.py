@@ -14,7 +14,7 @@ class Customer(Base):
     hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     
-    # Relationship with Orders
+    # Relationship with Orders - use string reference to avoid circular imports
     orders = relationship("Orders", back_populates="customer")
     
 class TokenBlacklist(Base):

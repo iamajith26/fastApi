@@ -1,59 +1,109 @@
-from fastapi import FastAPI
-from app.api.v1.routes import auth, users, products, orders
-from app.dependencies.auth import AuthenticationMiddleware
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import os
+from app.api.v1.routes import auth, users
+from app.dependencies.auth import AuthenticationMiddleware
+
+# Import all models to ensure SQLAlchemy can resolve relationships
+import app.models
 
 app = FastAPI(
-    title="FastAPI Auth Products",
-    description="API documentation for user authentication and product management.",
+    title="API Gateway - FastAPI Auth Products",
+    description="API Gateway for microservices",
     version="1.0.0",
-    docs_url="/docs",         # Swagger UI
-    redoc_url="/redoc"        # ReDoc UI
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-origins = [
-    "http://localhost:8080",
-]
+# Microservice URLs
+PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8001")
+ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add the authentication middleware
+# Add authentication middleware only for protected routes
 app.add_middleware(AuthenticationMiddleware)
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc: RequestValidationError):
-    cleaned = []
-    for err in exc.errors():
-        loc = err.get("loc", [])
-        # Extract field name (last string part that's not 'body')
-        field_name = None
-        for part in reversed(loc):
-            if isinstance(part, str) and part != "body":
-                field_name = part
-                break
-        # Build custom message "field_name Field required"
-        base_msg = err.get("msg")
-        custom_msg = f"{field_name} {base_msg}" if field_name and base_msg else base_msg
-        cleaned.append({
-            "error": custom_msg,
-            "type": err.get("type"),
-        })
-    return JSONResponse(status_code=422, content={"detail": cleaned})
-
-
+# Include auth and users routes (these stay in the gateway)
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(products.router, prefix="/products", tags=["products"])
-app.include_router(orders.router, prefix="/orders", tags=["orders"])
+
+@app.api_route("/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def products_proxy(path: str, request):
+    """Proxy requests to products microservice"""
+    async with httpx.AsyncClient() as client:
+        url = f"{PRODUCTS_SERVICE_URL}/products/{path}"
+        headers = dict(request.headers)
+        
+        if request.method == "GET":
+            response = await client.get(url, headers=headers, params=request.query_params)
+        elif request.method == "POST":
+            body = await request.body()
+            response = await client.post(url, headers=headers, content=body)
+        elif request.method == "PUT":
+            body = await request.body()
+            response = await client.put(url, headers=headers, content=body)
+        elif request.method == "DELETE":
+            response = await client.delete(url, headers=headers)
+        
+        return response.json()
+
+@app.api_route("/orders/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def orders_proxy(path: str, request):
+    """Proxy requests to orders microservice"""
+    async with httpx.AsyncClient() as client:
+        url = f"{ORDERS_SERVICE_URL}/orders/{path}"
+        headers = dict(request.headers)
+        
+        if request.method == "GET":
+            response = await client.get(url, headers=headers, params=request.query_params)
+        elif request.method == "POST":
+            body = await request.body()
+            response = await client.post(url, headers=headers, content=body)
+        elif request.method == "PUT":
+            body = await request.body()
+            response = await client.put(url, headers=headers, content=body)
+        elif request.method == "DELETE":
+            response = await client.delete(url, headers=headers)
+        
+        return response.json()
 
 @app.get("/")
 async def read_root():
-    return {"message": "Welcome to the FastAPI application with user authentication and product management!"}
+    return {"message": "API Gateway - FastAPI Microservices"}
+
+@app.get("/health")
+async def health_check():
+    """Check health of all services"""
+    services_health = {}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Check products service
+            try:
+                response = await client.get(f"{PRODUCTS_SERVICE_URL}/health", timeout=5.0)
+                services_health["products"] = response.json()
+            except:
+                services_health["products"] = {"status": "unhealthy"}
+            
+            # Check orders service
+            try:
+                response = await client.get(f"{ORDERS_SERVICE_URL}/health", timeout=5.0)
+                services_health["orders"] = response.json()
+            except:
+                services_health["orders"] = {"status": "unhealthy"}
+    except:
+        pass
+    
+    return {
+        "status": "healthy",
+        "service": "api_gateway",
+        "services": services_health
+    }

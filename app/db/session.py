@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
+from app.db.base import Base
 
 # Load .env from project root
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -18,8 +19,6 @@ connection = engine.connect()
 print("Connection successful!")
 connection.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
 
 def get_db():
     db = SessionLocal()

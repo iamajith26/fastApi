@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     email: EmailStr
     ph_no: int
     pincode: int
+    photo_url: Optional[str] = None
 
 class UserCreate(UserBase):
     pass
