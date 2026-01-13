@@ -24,6 +24,12 @@ def read_order(
     order = order_service.get_order_by_id(order_id)
     return order
 
+@router.post('/create_order')
+def create_order(payload: OrderCreate, db=Depends(get_db)):
+    order_service = OrderService(db)
+    new_order = order_service.order_create(payload)
+    return {"status": "success", "order_id": new_order.id}
+
 # Not working need to check
 @router.post("/update_total")
 async def update_order_total(payload: OrderUpdateTotal, db=Depends(get_db)):

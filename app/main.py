@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import os
-from app.api.v1.routes import auth, users
+from app.api.v1.routes import auth
 from app.dependencies.auth import AuthenticationMiddleware
 from app.services.auth_service import get_current_user
 from app.models.user import Customer
@@ -21,6 +21,7 @@ app = FastAPI(
 # Microservice URLs
 PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8001")
 ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002")
+USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8003")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,9 +34,46 @@ app.add_middleware(
 # Add authentication middleware only for protected routes
 app.add_middleware(AuthenticationMiddleware)
 
-# Include auth and users routes (these stay in the gateway)
+# Include only auth routes (users moved to microservice)
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(users.router, prefix="/users", tags=["users"])
+
+@app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def users_proxy(
+    path: str, 
+    request: Request, 
+    current_user: Customer = Depends(get_current_user)
+):
+    """Proxy requests to users microservice - Requires authentication"""
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{USERS_SERVICE_URL}/users/{path}"
+            
+            # Forward headers but add user context
+            headers = dict(request.headers)
+            headers["X-User-ID"] = str(current_user.id)
+            headers["X-User-Email"] = current_user.email
+            
+            if request.method == "GET":
+                response = await client.get(url, headers=headers, params=request.query_params)
+            elif request.method == "POST":
+                body = await request.body()
+                response = await client.post(url, headers=headers, content=body)
+            elif request.method == "PUT":
+                body = await request.body()
+                response = await client.put(url, headers=headers, content=body)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
+            
+            # Check if the response is successful
+            if response.status_code >= 400:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+                
+            return response.json()
+            
+    except httpx.RequestError:
+        raise HTTPException(status_code=503, detail="Users service unavailable")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error communicating with users service: {str(e)}")
 
 @app.api_route("/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def products_proxy(
@@ -124,6 +162,13 @@ async def health_check():
     
     try:
         async with httpx.AsyncClient() as client:
+            # Check users service
+            try:
+                response = await client.get(f"{USERS_SERVICE_URL}/health", timeout=5.0)
+                services_health["users"] = response.json()
+            except:
+                services_health["users"] = {"status": "unhealthy"}
+            
             # Check products service
             try:
                 response = await client.get(f"{PRODUCTS_SERVICE_URL}/health", timeout=5.0)
