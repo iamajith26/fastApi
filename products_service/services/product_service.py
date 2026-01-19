@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException
 from app.db.session import get_db
-from app.models.product import Product
-from app.schemas.product import ProductCreate, ProductUpdate
+from products_service.models.product import Product
+from products_service.schemas.product import ProductCreate, ProductUpdate
 from typing import Optional
 
 class ProductService:

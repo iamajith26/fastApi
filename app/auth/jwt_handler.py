@@ -4,10 +4,6 @@ load_dotenv()
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import jwt  # Import PyJWT
-from app.models.user import Customer as User
-from app.db.session import get_db
-from sqlalchemy.orm import Session
-from app.services.token_blacklist_service import is_token_blacklisted
 
 # Configuration (override via environment variables in production)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_SUPER_SECRET")
@@ -80,17 +76,4 @@ def get_user_id_from_token(token: str) -> Optional[int]:
         sub = payload.get("sub")
         return int(sub) if sub is not None else None
     except Exception:
-        return None
-
-def verify_jwt_token(token: str, db: Session) -> Optional[User]:
-    if is_token_blacklisted(db, token):
-        return None
-    try:
-        payload = decode_access_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            return None
-        user = db.query(User).filter(User.id == int(user_id)).first()
-        return user
-    except jwt.InvalidTokenError:
         return None

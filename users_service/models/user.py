@@ -1,10 +1,10 @@
 from sqlalchemy import Column, Integer, Text, DateTime, String, Boolean
 from app.db.base import Base
-from sqlalchemy.orm import relationship
 from datetime import datetime
 
 class Customer(Base):
     __tablename__ = "customer"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
@@ -14,13 +14,10 @@ class Customer(Base):
     hashed_password = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     
-    # Relationship with Orders - use string reference to avoid circular imports
-    orders = relationship("Orders", back_populates="customer")
-    
 class TokenBlacklist(Base):
     __tablename__ = "token_blacklist"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True, index=True)
     token = Column(Text, nullable=False, unique=True)
     blacklisted_at = Column(DateTime, default=datetime.utcnow)
-

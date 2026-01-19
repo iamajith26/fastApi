@@ -5,20 +5,20 @@ from sqlalchemy.orm import relationship
 
 class Orders(Base):
     __tablename__ = "orders"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
-    customer_id = Column(Integer, ForeignKey("customer.id"), nullable=True)
+    product_id = Column(Integer, nullable=True)  # Just store ID, no foreign key reference
+    customer_id = Column(Integer, nullable=True)  # Just store ID, no foreign key reference
     order_date = Column(Date, nullable=True)
     status = Column(String, default="Pending", nullable=True)
 
-    # Relationships
-    product = relationship("Product", back_populates="orders")
-    customer = relationship("Customer", back_populates="orders")
-    order_details = relationship("OrderDetails", back_populates="order")  # Added relationship
+    # Only relationship to models within this service
+    order_details = relationship("OrderDetails", back_populates="order")
     
 class OrderDetails(Base):
     __tablename__ = 'order_details'
+    __table_args__ = {'extend_existing': True}
     
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey('orders.id'), nullable=False)

@@ -1,12 +1,14 @@
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from app.db.session import get_db
-from app.auth.jwt_handler import verify_jwt_token
-from sqlalchemy.orm import Session
-import jwt  # Add this import
+from app.auth.jwt_handler import decode_access_token
+import jwt
+import logging
+
+logger = logging.getLogger(__name__)
 
 EXCLUDED_PATHS = ["/", "/auth/login", "/auth/register", "/auth/refresh_token", "/docs", "/openapi.json", "/redoc"]
+
 class AuthenticationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip authentication for excluded paths
@@ -24,11 +26,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
         token = auth_header.split(" ")[1]
 
-        # Verify the token
-        db: Session = get_db().__next__()  # Get a database session
-        user = None
+        # Verify the token without database access
         try:
-            user = verify_jwt_token(token, db)
+            payload = decode_access_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"message": "Invalid authentication credentials"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
         except jwt.ExpiredSignatureError:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -42,13 +49,6 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        if not user:
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"message": "Invalid authentication credentials"},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        # Add the user to the request state
-        request.state.user = user
+        # Add the user ID to the request state (no need to fetch full user here)
+        request.state.user_id = user_id
         return await call_next(request)

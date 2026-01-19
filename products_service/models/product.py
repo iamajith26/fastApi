@@ -1,9 +1,9 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean
 from app.db.base import Base
-from sqlalchemy.orm import relationship
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
@@ -11,6 +11,3 @@ class Product(Base):
     price = Column(Float, nullable=False)
     quantity = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
-    
-    # Relationship with Orders
-    orders = relationship("Orders", back_populates="product")
