@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.dependencies.gateway_auth import validate_gateway_request
 from users_service.models.user import Customer as User
 from sqlalchemy import text
 from users_service.schemas.user import UserBase, UserCreate, UserUpdate, UserResponse
@@ -35,26 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-async def validate_gateway_request(
-    x_user_id: Optional[str] = Header(None)
-):
-    """Validate that request comes from authenticated gateway"""
-    # Allow direct access for testing/development
-    if os.getenv("ALLOW_DIRECT_ACCESS", "false").lower() == "true":
-        if not x_user_id:
-            logger.warning("Direct access allowed - no gateway headers found")
-            return {"user_id": 1}
-    
-    # Production mode - require gateway headers
-    if not x_user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Request must come from authenticated gateway"
-        )
-    
-    logger.info(f"Orders request from user ID: {x_user_id}")
-    return {"user_id": int(x_user_id)}
 
 # Users Routes - moved from main app
 @app.get("/users/", response_model=List[UserResponse])
