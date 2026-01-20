@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL", "http://localhost:8001")
 ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL", "http://localhost:8002")
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8003")
+CART_SERVICE_URL = os.getenv("CART_SERVICE_URL", "http://localhost:8004")
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,6 +163,48 @@ async def orders_proxy(
         logger.error(f"Error communicating with orders service: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error communicating with orders service: {str(e)}")
 
+@app.api_route("/cart/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def cart_proxy(
+    path: str, 
+    request: Request, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Proxy requests to cart microservice - Mixed authentication (some endpoints public)"""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            url = f"{CART_SERVICE_URL}/cart/{path}"
+            
+            # Get query parameters  
+            query_params = dict(request.query_params)
+            
+            # Forward headers but add user context
+            headers = dict(request.headers)
+            headers["x-user-id"] = str(current_user["id"])
+            
+            if request.method == "GET":
+                response = await client.get(url, headers=headers, params=query_params)
+            elif request.method == "POST":
+                body = await request.body()
+                response = await client.post(url, headers=headers, content=body)
+            elif request.method == "PUT":
+                body = await request.body()
+                response = await client.put(url, headers=headers, content=body)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
+            
+            # Check if the response is successful
+            if response.status_code >= 400:
+                return {"error": response.text, "status_code": response.status_code}
+                
+            return response.json()
+            
+    except httpx.RequestError as e:
+        logger.error(f"Cart service error: {e}")
+        raise HTTPException(status_code=503, detail="Cart service unavailable")
+    except Exception as e:
+        logger.error(f"Error communicating with cart service: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error communicating with cart service: {str(e)}")
+
 @app.get("/")
 async def read_root():
     return {
@@ -171,7 +214,8 @@ async def read_root():
             "authentication": "/auth",
             "users": "/users",
             "products": "/products", 
-            "orders": "/orders"
+            "orders": "/orders",
+            "cart": "/cart"
         },
         "docs": "/docs"
     }
@@ -203,6 +247,13 @@ async def health_check():
                 services_health["orders"] = response.json()
             except:
                 services_health["orders"] = {"status": "unhealthy"}
+            
+            # Check cart service
+            try:
+                response = await client.get(f"{CART_SERVICE_URL}/health")
+                services_health["cart"] = response.json()
+            except:
+                services_health["cart"] = {"status": "unhealthy"}
     except:
         pass
     
