@@ -1,4 +1,4 @@
-# FastAPI Auth Products
+# FastAPI Microservices - Ecommerce
 
 This project is a FastAPI application that provides user authentication and product management functionalities. It utilizes PostgreSQL as the database and employs PyJWT for handling JSON Web Tokens.
 
