@@ -2,7 +2,6 @@ from pydantic import BaseModel
 from typing import Optional
 
 class ProductBase(BaseModel):
-    id: int
     name: str
     description: Optional[str] = None
     price: float
@@ -10,6 +9,7 @@ class ProductBase(BaseModel):
     is_active: bool = True
 
 class ProductCreate(ProductBase):
+    # Inherits from ProductBase but excludes id (auto-generated)
     pass
 
 class ProductUpdate(BaseModel):
@@ -19,6 +19,7 @@ class ProductUpdate(BaseModel):
     quantity: Optional[int] = None
 
 class ProductOut(ProductBase):
-    id: int
+    id: int  # Only include id in output schema
+    
     class Config:
         from_attributes = True   # Pydantic v2

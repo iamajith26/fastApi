@@ -1,19 +1,26 @@
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 import httpx
 import os
 from app.api.v1.routes import auth
 from app.dependencies.auth import AuthenticationMiddleware
+from app.dependencies.rate_limiter import limiter, auth_limiter, RATE_LIMITS
 from app.services.auth_service import get_current_user
 import logging
 
 app = FastAPI(
     title="E-commerce API Gateway",
-    description="Central gateway for e-commerce microservices",
+    description="Central gateway for e-commerce microservices with rate limiting",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Add rate limiting middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +41,11 @@ app.add_middleware(
 # Add authentication middleware only for protected routes
 app.add_middleware(AuthenticationMiddleware)
 
-# Include only auth routes (users, products, orders now handled by respective services)
+# Include auth routes with rate limiting
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 @app.api_route("/users/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@auth_limiter.limit(RATE_LIMITS["users"])
 async def users_proxy(
     path: str, 
     request: Request, 
@@ -80,6 +88,7 @@ async def users_proxy(
         raise HTTPException(status_code=500, detail=f"Error communicating with users service: {str(e)}")
 
 @app.api_route("/products/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@auth_limiter.limit(RATE_LIMITS["products"])
 async def products_proxy(
     path: str, 
     request: Request, 
@@ -122,6 +131,7 @@ async def products_proxy(
         raise HTTPException(status_code=500, detail=f"Error communicating with products service: {str(e)}")
 
 @app.api_route("/orders/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@auth_limiter.limit(RATE_LIMITS["orders"])
 async def orders_proxy(
     path: str, 
     request: Request, 
@@ -164,6 +174,7 @@ async def orders_proxy(
         raise HTTPException(status_code=500, detail=f"Error communicating with orders service: {str(e)}")
 
 @app.api_route("/cart/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@auth_limiter.limit(RATE_LIMITS["cart"])
 async def cart_proxy(
     path: str, 
     request: Request, 
@@ -206,7 +217,8 @@ async def cart_proxy(
         raise HTTPException(status_code=500, detail=f"Error communicating with cart service: {str(e)}")
 
 @app.get("/")
-async def read_root():
+@limiter.limit(RATE_LIMITS["public"])
+async def read_root(request: Request):
     return {
         "message": "E-commerce API Gateway",
         "version": "1.0.0",
@@ -221,7 +233,8 @@ async def read_root():
     }
 
 @app.get("/health")
-async def health_check():
+@limiter.limit(RATE_LIMITS["health"])
+async def health_check(request: Request):
     """Check health of all services"""
     services_health = {}
     
