@@ -37,17 +37,52 @@ class AuthService:
             ph_no=user_create.ph_no,
             pincode=user_create.pincode,
             hashed_password=hashed_password,
+            role_id=2  # Regular user role
         )
         self.db.add(user)
         self.db.commit()
         # self.db.refresh(user)  # not needed since we don't return it
-        return RegistrationMessage(detail="User registered successfully").dict()  
+        return RegistrationMessage(detail="User registered successfully").dict()
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
+    async def register_admin_user(self, user_create: UserCreate) -> dict:
+        """Register a new admin user with role_id = 1"""
+        # Hash the password
+        hashed_password = pwd_context.hash(DEFAULT_PSW)
+    
+        if self.db.query(User).filter(User.email == user_create.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        admin_user = User(
+            name=user_create.name,
+            email=user_create.email,
+            ph_no=user_create.ph_no,
+            pincode=user_create.pincode,
+            hashed_password=hashed_password,
+            role_id=1  # Admin role
+        )
+        self.db.add(admin_user)
+        self.db.commit()
+        return RegistrationMessage(detail="Admin user registered successfully").dict()
+
+    async def get_admin_count(self) -> int:
+        """Get count of existing admin users"""
+        return self.db.query(User).filter(User.role_id == 1, User.is_active == True).count()
+
+    def authenticate_user(self, email: str, password: str) -> Optional[dict]:
         user = self.db.query(User).filter(User.email == email).first()
         if not user or not user.hashed_password or not verify_password(password, user.hashed_password):
             return None
-        return user
+        
+        # Return user data as dict including role_id
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "ph_no": user.ph_no,
+            "pincode": user.pincode,
+            "role_id": user.role_id,
+            "is_active": user.is_active
+        }
 
     def get_user(self, user_id: int) -> UserOut:
         user = self.db.query(User).filter(User.id == user_id).first()
@@ -61,7 +96,7 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
-) -> User:
+) -> dict:
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -69,13 +104,24 @@ def get_current_user(
     )
     try:
         payload = decode_access_token(token)
-        sub = payload.get("sub")
+        sub = payload.get("id")
         if sub is None:
             raise credentials_error
         user_id = int(sub)
     except Exception:
         raise credentials_error
+    
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise credentials_error
-    return user
+    
+    # Return user data as dict including role_id for admin checks
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "ph_no": user.ph_no,
+        "pincode": user.pincode,
+        "role_id": user.role_id,
+        "is_active": user.is_active
+    }

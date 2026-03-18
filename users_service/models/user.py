@@ -12,6 +12,7 @@ class Customer(Base):
     ph_no = Column(Integer, nullable=False)
     pincode = Column(Integer, nullable=False)
     hashed_password = Column(String, nullable=True)
+    role_id = Column(Integer, nullable=True, default=2)
     is_active = Column(Boolean, default=True)
     
 class TokenBlacklist(Base):

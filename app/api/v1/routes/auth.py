@@ -3,30 +3,63 @@ from app.schemas.user import UserCreate, RegistrationMessage, LoginRequest
 from app.services.auth_service import AuthService, get_auth_service
 from app.auth.jwt_handler import create_access_token, create_refresh_token, decode_refresh_token
 from app.dependencies.rate_limiter import limiter, RATE_LIMITS
+from app.dependencies.gateway_auth import require_admin_role
 import jwt
+import logging
 from app.schemas.token import RefreshTokenRequest
 from fastapi.responses import JSONResponse
 from fastapi import Header
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/register", response_model=RegistrationMessage, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")  # Strict limit for registration
-async def register_user(request: Request, user: UserCreate, auth_service: AuthService = Depends(get_auth_service)):
-    return await auth_service.register_user(user)
+async def register_user(
+    request: Request, 
+    user: UserCreate, 
+    admin_user: dict = Depends(require_admin_role),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Register a new user - Requires Admin authentication (role_id = 1)"""
+    # Log admin action
+    logger.info(f"Admin user {admin_user['id']} ({admin_user['email']}) registering new user: {user.email}")
+    
+    return auth_service.register_user(user)  # Removed await
+
+@router.post("/register-admin", response_model=RegistrationMessage, status_code=status.HTTP_201_CREATED)
+@limiter.limit("1/hour")  # Very strict limit for admin registration
+async def register_initial_admin(
+    request: Request, 
+    user: UserCreate, 
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Register initial admin user - Public endpoint for system setup"""
+    # Check if any admin users already exist
+    existing_admins = await auth_service.get_admin_count()
+    if existing_admins > 0:
+        raise HTTPException(
+            status_code=403, 
+            detail="Admin users already exist. Use regular registration endpoint with admin authentication."
+        )
+    
+    # Create user with admin role
+    logger.info(f"Creating initial admin user: {user.email}")
+    return await auth_service.register_admin_user(user)
 
 @router.post("/login")
 @limiter.limit(RATE_LIMITS["auth"])  # 10/minute for login attempts
 async def login_user(request: Request, credentials: LoginRequest, auth_service: AuthService = Depends(get_auth_service)):
-    user_db = await auth_service.authenticate_user(credentials.email, credentials.hashed_password)
+    user_db = auth_service.authenticate_user(credentials.email, credentials.hashed_password)  # Removed await
     if not user_db:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    access_token = create_access_token(data={"sub": str(user_db["id"])})
-    refresh_token = create_refresh_token({"sub": str(user_db["id"])})
+    access_token = create_access_token(user_db)
+    refresh_token = create_refresh_token(user_db)
     response = JSONResponse({
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "Bearer"
+        "token_type": "Bearer",
+        "user_details": user_db  # Include user details in the response
     })
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True)
     return response

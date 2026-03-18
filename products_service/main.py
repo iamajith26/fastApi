@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.session import get_db
 from app.dependencies.gateway_auth import validate_gateway_request
+from app.dependencies.gateway_auth import require_admin_role
 from products_service.services.product_service import get_product_service, ProductService
 from products_service.schemas.product import ProductCreate, ProductUpdate, ProductOut
 from typing import Optional, List
@@ -54,6 +55,7 @@ async def get_product(
 async def create_product(
     product: ProductCreate,
     user_context: dict = Depends(validate_gateway_request),
+    is_admin = Depends(require_admin_role),
     product_service: ProductService = Depends(get_product_service)
 ):
     """Create a new product - Requires authentication"""
@@ -66,6 +68,7 @@ async def update_product(
     product_id: int,
     product_update: ProductUpdate,
     user_context: dict = Depends(validate_gateway_request),
+    is_admin: bool = Depends(require_admin_role),
     product_service: ProductService = Depends(get_product_service)
 ):
     """Update a product - Requires authentication"""
@@ -79,6 +82,7 @@ async def update_product(
 async def delete_product(
     product_id: int,
     user_context: dict = Depends(validate_gateway_request),
+    is_admin: bool = Depends(require_admin_role),
     product_service: ProductService = Depends(get_product_service)
 ):
     """Delete a product - Requires authentication"""

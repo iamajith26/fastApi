@@ -1,102 +1,102 @@
-from fastapi import HTTPException, Depends, status, Header
+from fastapi import HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
-import httpx
-from app.schemas.user import UserCreate, RegistrationMessage, LoginRequest
+from sqlalchemy.orm import Session
+from app.db.session import get_db
+from users_service.models.user import Customer as User
+from users_service.schemas.user import UserCreate, UserOut, RegistrationMessage
 from app.auth.jwt_handler import decode_access_token
+from app.auth.password import hash_password, verify_password
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 import os
-from typing import Optional, Dict, Any
-import logging
+from typing import Optional
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Get the default password from the .env file
 DEFAULT_PSW = os.getenv("DEFAULT_PSW")
-USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8003")
 
-logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 class AuthService:
-    def __init__(self, user_id: str = None):
-        self.user_id = user_id
+    def __init__(self, db: Session):
+        self.db = db
 
-    async def register_user(self, user_create: UserCreate) -> dict:
-        """Register user via users microservice"""
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # No x-user-id header needed for registration - this is for new users
-                response = await client.post(
-                    f"{USERS_SERVICE_URL}/users/create_user",
-                    json=user_create.dict()
-                )
-                
-                if response.status_code == 400:
-                    raise HTTPException(status_code=400, detail=response.json().get("detail", "Registration failed"))
-                elif response.status_code != 200:
-                    raise HTTPException(status_code=500, detail="User service error")
-                
-                return RegistrationMessage(detail="User registered successfully").dict()
-                
-        except httpx.RequestError as e:
-            logger.error(f"Users service error during registration: {e}")
-            raise HTTPException(status_code=503, detail="Users service unavailable")
+    def register_user(self, user_create: UserCreate) -> dict:
+        # Hash the password
+        hashed_password = pwd_context.hash(DEFAULT_PSW)
+    
+        if self.db.query(User).filter(User.email == user_create.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        user = User(
+            name=user_create.name,
+            email=user_create.email,
+            ph_no=user_create.ph_no,
+            pincode=user_create.pincode,
+            hashed_password=hashed_password,
+            role_id=2  # Regular user role
+        )
+        self.db.add(user)
+        self.db.commit()
+        # self.db.refresh(user)  # not needed since we don't return it
+        return RegistrationMessage(detail="User registered successfully").dict()
 
-    async def authenticate_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
-        """Authenticate user via users microservice"""
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Use the new public authentication endpoint
-                response = await client.post(
-                    f"{USERS_SERVICE_URL}/users/authenticate",
-                    params={"email": email, "password": password}
-                )
-                
-                if response.status_code == 401:
-                    logger.info(f"Authentication failed for email: {email}")
-                    return None
-                elif response.status_code != 200:
-                    logger.error(f"Users service error: {response.status_code} - {response.text}")
-                    return None
-                
-                return response.json()
-                
-        except httpx.RequestError as e:
-            logger.error(f"Users service error during authentication: {e}")
+    async def register_admin_user(self, user_create: UserCreate) -> dict:
+        """Register a new admin user with role_id = 1"""
+        # Hash the password
+        hashed_password = pwd_context.hash(DEFAULT_PSW)
+    
+        if self.db.query(User).filter(User.email == user_create.email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        admin_user = User(
+            name=user_create.name,
+            email=user_create.email,
+            ph_no=user_create.ph_no,
+            pincode=user_create.pincode,
+            hashed_password=hashed_password,
+            role_id=1  # Admin role
+        )
+        self.db.add(admin_user)
+        self.db.commit()
+        return RegistrationMessage(detail="Admin user registered successfully").dict()
+
+    async def get_admin_count(self) -> int:
+        """Get count of existing admin users"""
+        return self.db.query(User).filter(User.role_id == 1, User.is_active == True).count()
+
+    def authenticate_user(self, email: str, password: str) -> Optional[dict]:
+        user = self.db.query(User).filter(User.email == email).first()
+        if not user or not user.hashed_password or not verify_password(password, user.hashed_password):
             return None
+        
+        # Return user data as dict including role_id
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "ph_no": user.ph_no,
+            "pincode": user.pincode,
+            "role_id": user.role_id,
+            "is_active": user.is_active
+        }
 
-    async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user by ID via users microservice"""
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                headers = {}
-                if self.user_id:
-                    headers["x-user-id"] = self.user_id
-                
-                response = await client.get(
-                    f"{USERS_SERVICE_URL}/users/{user_id}",
-                    headers=headers
-                )
-                
-                if response.status_code == 404:
-                    raise HTTPException(status_code=404, detail="User not found")
-                elif response.status_code != 200:
-                    raise HTTPException(status_code=500, detail="User service error")
-                
-                return response.json()
-                
-        except httpx.RequestError as e:
-            logger.error(f"Users service error: {e}")
-            raise HTTPException(status_code=503, detail="Users service unavailable")
+    def get_user(self, user_id: int) -> UserOut:
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return UserOut.from_orm(user)
 
-def get_auth_service(x_user_id: Optional[str] = Header(None)) -> AuthService:
-    return AuthService(user_id=x_user_id)
+def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
+    return AuthService(db)
 
-async def get_current_user(token: str = Depends(oauth2_scheme), x_user_id: Optional[str] = Header(None)) -> Dict[str, Any]:
-    """Get current user from JWT token without database access"""
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> dict:
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -104,21 +104,24 @@ async def get_current_user(token: str = Depends(oauth2_scheme), x_user_id: Optio
     )
     try:
         payload = decode_access_token(token)
-        sub = payload.get("sub")
+        sub = payload.get("id")
         if sub is None:
             raise credentials_error
         user_id = int(sub)
-        
-        # Get user from users service
-        auth_service = AuthService(user_id=x_user_id)
-        user = await auth_service.get_user(user_id)
-        
-        if not user:
-            raise credentials_error
-        
-        return user
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in get_current_user: {e}")
+    except Exception:
         raise credentials_error
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise credentials_error
+    
+    # Return user data as dict including role_id for admin checks
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "ph_no": user.ph_no,
+        "pincode": user.pincode,
+        "role_id": user.role_id,
+        "is_active": user.is_active
+    }

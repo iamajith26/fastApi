@@ -9,6 +9,7 @@ from users_service.schemas.user import UserBase, UserCreate, UserUpdate, UserRes
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 from typing import Optional, List
+from app.dependencies.gateway_auth import require_admin_role
 import logging
 import os
 
@@ -74,6 +75,7 @@ async def list_users(
 @app.post("/users/create_user", response_model=dict)
 async def create_user(
     user: UserCreate,
+    is_admin = Depends(require_admin_role),
     db: Session = Depends(get_db)
 ):
     """Create a new user - Public endpoint for registration"""
@@ -92,6 +94,7 @@ async def create_user(
         ph_no=user.ph_no,
         pincode=user.pincode,
         hashed_password=hashed_password,
+        role_id=2,
         is_active=True
     )
     db.add(db_user)   
@@ -102,6 +105,7 @@ async def create_user(
 @app.get("/users/{user_id}", response_model=UserResponse)
 async def read_user(
     user_id: int,
+    is_admin = Depends(require_admin_role),
     user_context: dict = Depends(validate_gateway_request),
     db: Session = Depends(get_db)
 ):
@@ -115,6 +119,7 @@ async def read_user(
 async def update_user(
     user_id: int,
     user: UserUpdate,
+    is_admin = Depends(require_admin_role),
     user_context: dict = Depends(validate_gateway_request),
     db: Session = Depends(get_db)
 ):
@@ -131,6 +136,7 @@ async def update_user(
 @app.delete("/users/{user_id}", response_model=dict)
 async def delete_user(
     user_id: int,
+    is_admin = Depends(require_admin_role),
     user_context: dict = Depends(validate_gateway_request),
     db: Session = Depends(get_db)
 ):
@@ -171,6 +177,7 @@ async def authenticate_user_endpoint(
             "id": db_user.id,
             "name": db_user.name,
             "email": db_user.email,
+            "role_id": db_user.role_id,
             "ph_no": db_user.ph_no,
             "pincode": db_user.pincode,
             "is_active": db_user.is_active
